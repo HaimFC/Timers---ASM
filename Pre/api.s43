@@ -1,0 +1,247 @@
+#include    "bsp.h"
+
+            MODULE  API
+            
+            PUBLIC  printToLcd, ClrLCDs, state1Func, state2Func, firstLayer ; Functions - P                ;Layers 
+            PUBLIC  TA1_ISR2                                    ;Interupt
+            EXTERN  state, flag, Unit, Ten, Hund, Thous, TenT   ; Variabals   
+            EXTERN  LCDconfig, state0 , TimerA12Conf            ; Functions - E
+            
+            RSEG        CODE
+;------------------------------------------------------------------------------- 
+;Define polling value 
+;-------------------------------------------------------------------------------  
+
+Pull_3       EQU         1747
+;------------------------------------------------------------------------------- 
+           ;LCD MACRO
+;------------------------------------------------------------------------------- 
+Lcd_data     MACRO       valueTolcd
+             Debounce    #Pull_3
+             mov.b       #0x00,LCDOut
+             bis.b       #0x40,LCDCntOut
+             mov.b       valueTolcd,LCDOut 
+             bis.b       #0x20,LCDCntOut
+             NOP
+             NOP
+             bic.b       #0x20,LCDCntOut
+             bic.b       #0x40,LCDCntOut
+             ENDM
+;------------------------------------------------------------------------------- 
+            ;LCD DEBOUNCE
+;------------------------------------------------------------------------------- 
+Debounce     MACRO       cycles
+             LOCAL       L
+             mov.w       cycles,R15     
+L            dec.w       R15                     
+             jnz         L
+             ENDM
+;------------------------------------------------------------------------------- 
+           ;LCD CMD
+;-------------------------------------------------------------------------------              
+Lcd_cmd      MACRO       command
+             Debounce    #Pull_3
+             mov.b       command,LCDOut
+             bis.b       #0x20,LCDCntOut
+             NOP
+             NOP
+             bic.b       #0x20,LCDCntOut
+             ENDM
+;------------------------------------------------------------------------------- 
+           ;Divider
+;-------------------------------------------------------------------------------               
+DIV16bit        MACRO   Divided,Divisor,Quotient,Remainder
+                LOCAL   L1,L2,L3
+                mov     #17,R14
+                clr     R8                ; Quotient register
+                mov.w   Divided,R4        ; Devided registers is R5,R4
+                clr     R5
+                mov.w   Divisor,R6        ; Divisor registers is R6
+                
+L3              rla     R8
+L1              dec     R14
+                jz      L2
+                rla     R4
+                rlc     R5
+                cmp     R6,R5
+                jlo     L3
+                sub     R6,R5
+                setc
+                rlc     R8
+                jmp     L1
+                
+L2              mov.w   R8,Quotient
+                mov.w   R5,Remainder
+                ENDM
+;-------------------------------------------------------------------------------          
+state1Func 
+;-------------------------------------------------------------------------------      
+            mov         #57,R7  ;Units
+            mov         #53,R8  ;Tens            
+            bis.w       #CCIE, TIMERA0CaCoCtrl
+            
+            Lcd_data    #'0'
+            Lcd_data    #'1'
+            Lcd_data    #':'                 
+            Lcd_data    #'0'
+            Lcd_data    #'0'
+            
+            bis.w       #CPUOFF+GIE,SR
+            
+            Lcd_cmd     #0x01
+            
+            Lcd_data    #'0'
+            Lcd_data    #'0'
+            Lcd_data    #':'
+         
+dec1sec     CMP.B       #0x01,  state   ;Check if States has changed(by pressing pb)
+            JNE         stopLoop   ;if pb was pushed then return to FSM loop 
+            Lcd_data    R8
+            Lcd_data    R7
+            bis.w       #CPUOFF+GIE,SR
+            
+            cmp.b       #0x01,state
+            jne         stopLoop
+            
+            dec         R7
+            cmp         #0x2f, R7
+            JNZ         jumpBack
+            
+            Lcd_cmd     #0x10
+            Lcd_cmd     #0x10
+            
+            mov         #57,R7
+            dec         R8
+            Lcd_data    R8
+            cmp         #0x2f, R8
+            jnz         jumpBackT
+            
+            mov         #0,state
+            jmp         stopLoop
+          
+jumpBackT   Lcd_cmd     #0x10
+            jmp         dec1sec
+
+jumpBack    Lcd_cmd     #0x10
+            Lcd_cmd     #0x10
+            jmp         dec1sec
+            
+stopLoop    
+            ret       
+;-------------------------------------------------------------------------------          
+TA1_ISR2    add.w TIMERIV, PC
+            RETI              ;LAYER0
+            RETI              ;LAYER1
+            jmp  firstLayer  ;Layer2 
+            RETI 
+state2Func
+;------------------------------------------------------------------------------- 
+             
+            Lcd_data  #'M'
+            Lcd_data  #'e' 
+            Lcd_data  #'a' 
+            Lcd_data  #'s' 
+            Lcd_data  #'u' 
+            Lcd_data  #'r' 
+            Lcd_data  #'e' 
+            Lcd_data  #'d'
+            Lcd_data  #' ' 
+            Lcd_data  #'f' 
+            Lcd_data  #'r' 
+            Lcd_data  #'e' 
+            Lcd_data  #'q' 
+            Lcd_data  #'e' 
+            Lcd_data  #'n' 
+            Lcd_data  #'c'
+            
+            Lcd_cmd   #0xc0
+            
+            Lcd_data  #'y' 
+            Lcd_data  #':' 
+            Lcd_data  #' '
+            clr R9
+            
+            CLR     TIMERA1Ctrl     ;TAR clear    
+            mov.w   #TASSEL_2 + MC_2 + ID_3, TIMERA1Ctrl  ;SMCLK
+            mov.w   #CM_1 + SCS + CAP + CCIE, TIMERA1CaCoCtrl    ;Capture mod up edge
+            
+            bis.w   #CPUOFF+GIE,SR    
+            nop
+            ret
+;-------------------------------------------------------------------------------
+firstLayer  xor.b  #BIT2, &P2OUT
+            
+            tst.b  flag
+            jne    flag_1
+            mov.w  TIMERACCR,R9
+            xor.b  #0x01,flag
+            BIC    #CCIFG, TIMERA1CaCoCtrl
+            RETI
+            
+flag_1     
+            mov.w  TIMERACCR,R11
+            xor.b  #0x01,flag
+            sub R9, R11
+            jl negNumber
+            
+manip            
+            DIV16bit #0xffff, R11, 0,0
+            ;add.w  #400,R8
+            MOV    R8, R7
+            rla    R7
+
+            mov.w  #48, Unit
+            mov.w  #48, Ten
+            mov.w  #48, Hund
+            mov.w  #48, Thous
+            mov.w  #48, TenT
+            
+            DIV16bit R7, #10, 0,0
+            add.w  R5, Unit
+            MOV    R8, R10
+            DIV16bit R10, #10,0,0
+            add.w  R5, Ten
+            MOV    R8, R10
+            DIV16bit R10, #10,0,0
+            add.w  R5, Hund
+            MOV    R8, R10
+            DIV16bit R10, #10 ,0,0
+            add.w  R5, Thous
+            MOV    R8, R10
+            DIV16bit R10, #10 ,0,0
+            add.w  R5, TenT
+            
+            Lcd_data  TenT
+            Lcd_data  Thous
+            Lcd_data  Hund
+            Lcd_data  Ten
+            Lcd_data  Unit
+            Lcd_data  #' ' 
+            Lcd_data  #'[' 
+            Lcd_data  #'H' 
+            Lcd_data  #'z' 
+            Lcd_data  #']'
+            Lcd_cmd   #0xc0
+            Lcd_cmd   #0x14
+            Lcd_cmd   #0x14
+            Lcd_cmd   #0x14
+            BIC #CCIFG, TIMERA1CaCoCtrl
+            reti 
+
+negNumber  
+            ADD  #0xffff ,R9
+            jmp manip
+;-------------------------------------------------------------------------------            
+                               ;LCD API FUNCTIONS   
+;-------------------------------------------------------------------------------
+printToLcd 
+            pop        R6
+            Lcd_data   R6
+            pushToStack       R6          
+            ret          
+ClrLCDs   
+            call   #LCDconfig
+            ret
+;-------------------------------------------------------------------------------          
+            ENDMOD
+            END

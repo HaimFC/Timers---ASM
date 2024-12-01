@@ -1,0 +1,50 @@
+#include    "bsp.h"
+
+
+            MODULE  BSP
+            
+            PUBLIC  GPIOconfig, TIMER0config, LCDConfig, TimerA12Conf 
+            
+            RSEG    CODE
+            
+;---------------------------------------------------------------------------
+;           GPIO    configuration
+;---------------------------------------------------------------------------
+GPIOconfig
+StopWTD     MOV.W   #WDTPW+WDTHOLD,&WDTCTL
+            bic.b   #0xc0, PBsArrPortSel
+            bic.b   #0x1F, PBsArrPortDir
+            bis.b   #0x0F, PBsArrIntEdgeSel
+            bis.b   #0x03, PBsArrIntEn
+            bic.b   #0x0F, PBsArrIntPend 
+            bis.b   #PulseBTN, PBsArrPortSel
+            ret             
+;---------------------------------------------------------------------------
+;           Timers configuration
+;---------------------------------------------------------------------------           
+TIMER0config               
+            mov.w   #65535, TIMERA0CaCoVal  
+            bis.w   #MC_3, TIMERA0Ctrl
+            bis.w   #ID_3, TIMERA0Ctrl
+            bis.w   #TASSEL_2, TIMERA0Ctrl 
+            bis.w   #TACLR, TIMERA0Ctrl   
+            bic.w   #CCIFG, TIMERA0CaCoCtrl
+            ret
+;----------------------------------------------------------------------------
+TimerA12Conf
+            CLR     TIMERA1Ctrl     ;TAR clear    
+            mov.w   #TASSEL_2 + MC_2 + ID_3, TIMERA1Ctrl  ;SMCLK
+            mov.w   #CM_1 + SCS + CAP + CCIE, TIMERA1CaCoCtrl     ;Capture mod up edge
+            ret
+;---------------------------------------------------------------------------
+;           LCD configuration
+;---------------------------------------------------------------------------
+LCDConfig 
+             bic.b   #0xFF, LCDSel ;LcDs need to be I/O
+             bis.b   #0xFF, LCDDir ;LCD data need to be output
+             bic.b   #0xE0, LCDCntSel ;p2.5-7 GPIO 
+             bis.b   #0xE0, LCDCntDir  ;Control Legs for LCD
+             ret
+;---------------------------------------------------------------------------
+            ENDMOD
+            END

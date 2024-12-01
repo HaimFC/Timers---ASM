@@ -1,0 +1,64 @@
+#include    "bsp.h"
+        
+            NAME     MAIN
+            
+            PUBLIC   state0, state1, state2                    ; FUNCTIONS - P
+            PUBLIC   state, flag, Unit, Ten, Hund, Thous, TenT ; VARIABLES
+            EXTERN   TA0_ISR, TA1_ISR2, PORT2_ISR              ; INTERUPTS
+            EXTERN   SysConfig, ClrLCDs, state1Func, state2Func; FUNCTIONS - E
+            
+                        
+            ORG      RAMcode
+;*******************************************************************************
+flag        DW       0
+state       DW       0
+TenT        DW       48
+Thous       DW       48
+Hund        DW       48
+Ten         DW       48
+Unit        DW       48
+;*******************************************************************************  
+             
+            ORG      FlashCode
+            RSEG     CSTACK
+            RSEG     CODE
+            
+MAIN        MOV.W    #SFE(CSTACK), SP           
+            call     #SysConfig  
+;--------------------------FSM LOOP----------------------------------      
+            BIS.B    #BIT2, &P2DIR
+            
+state0      cmp      #0x00,state    ; STATE0 - SLEEP
+            jnz      state1
+            call     #ClrLCDs       ; CLEAR THE LCD 
+            bis.w    #CPUOFF+GIE,SR ; SLEEP
+
+state1      cmp      #0x01,state   ; STATE0 - SLEEP
+            jnz      state2        
+            call     #ClrLCDs
+            call     #state1Func   ; PB0 
+            bic.w    #CCIE, TIMERA0CaCoCtrl  ; DISABLE TIMERA0 INTERUPT
+            jmp      state0
+
+state2      cmp      #0x02,state
+            jnz      state0
+            call     #ClrLCDs
+            call     #state2Func   ;PB1 
+            bic.w    #CCIE, TIMERA1CaCoCtrl  ; DISABLE TIMERA1 INTERUPT
+            JMP      state0
+            nop
+;-------------------------------------------------------------------------------
+            COMMON   INTVEC              ; Interrupt Vectors
+;-------------------------------------------------------------------------------
+            ORG      PORT2_VECTOR        ; Port 2 Vector
+            DW       PORT2_ISR
+            
+            ORG      TIMERPB0VECTOR    ; Timer0 Vector
+            DW       TA0_ISR
+            
+            ORG      TIMERPB1VECTOR    ; Timer1 layer 1 Vector
+            DW       TA1_ISR2
+            
+            ORG      RESET_VECTOR        ; Reset Vector         
+            DW       MAIN
+            END

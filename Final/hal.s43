@@ -1,0 +1,97 @@
+#include    "bsp.h"
+
+
+            MODULE  HAL
+            
+            PUBLIC  SysConfig, LCDconfig                             ;Config funcs
+            PUBLIC  PORT2_ISR, TA0_ISR                               ;Interupts functions
+            PUBLIC  Lcd_strobe                                       ;LCD Functions
+            EXTERN  GPIOconfig, TIMER0config,TimerA12Conf, LCDConfig ;Config funcs
+            EXTERN  state, firstLayer                                ;Variabals
+            
+            RSEG    CODE
+Pull_3       EQU         1747
+;------------------------------------------------------------------------------- 
+Debounce     MACRO       cycles
+             LOCAL       L
+             mov.w       cycles,R15     
+L            dec.w       R15                     
+             jnz         L
+             ENDM
+;-------------------------------------------------------------------------------               
+             
+Lcd_cmd      MACRO       command
+             Debounce    #Pull_3
+             mov.b       command,LCDOut
+             bis.b       #0x20,LCDCntOut
+             NOP
+             NOP
+             bic.b       #0x20,LCDCntOut
+             ENDM
+;---------------------------------------------------------------------------
+;           System Configuration
+;---------------------------------------------------------------------------
+SysConfig   call  #GPIOconfig
+            call  #LCDConfig
+            call  #TIMER0config
+            ret          
+;---------------------------------------------------------------------------
+;           LCD Configuration
+;---------------------------------------------------------------------------            
+Lcd_strobe  bis.b  #0x20, LCDCntOut
+            nop
+            nop
+            bic.b  #0x20, LCDCntOut
+            ret
+            
+LCDconfig
+            bic.b       #0xE0, LCDCntOut   ; clear control legs
+            Debounce    #Pull_3
+            mov.b       #0x3F, LCDOut
+            call        #Lcd_strobe
+            Debounce    #Pull_3
+            mov.b       #0x3F, LCDOut
+            call        #Lcd_strobe
+            Debounce    #Pull_3
+            mov.b       #0x3F, LCDOut
+            call        #Lcd_strobe
+            Lcd_cmd     #0x3C
+            Lcd_cmd     #0x3C
+            Lcd_cmd     #0x0F
+            Lcd_cmd     #0x01
+            Lcd_cmd     #0x06
+            Lcd_cmd     #0x80
+            Lcd_cmd     #0x02
+            ret                      
+;---------------------------------------------------------------------------
+;           PORT2 Interrupt Service Routine
+;---------------------------------------------------------------------------
+PORT2_ISR   bit.b #0x01,PBsArrIntPend
+            jnz   P2_0
+            bit.b #0x02,PBsArrIntPend
+            jnz   P2_1
+            bit.b #0x08,PBsArrIntPend
+            jnz   P2_2
+            reti
+            
+P2_0        mov   #1,state
+            jmp   exitLPM0
+P2_1        mov   #2,state
+            jmp   exitLPM0
+P2_2        mov   #3,state
+            jmp   exitLPM0            
+            
+exitLPM0    bic   #CPUOFF,0(SP)
+            bic.b #0x0f,PBsArrIntPend
+            reti
+;---------------------------------------------------------------------------
+;           TIMERA0/1 Interrupt Service Routine
+;---------------------------------------------------------------------------            
+TA0_ISR      bic     #CPUOFF,0(SP)
+             bic.w   #CCIFG, TIMERA0CaCoCtrl
+             reti
+;------------------------------------------------------------------------------            
+
+;---------------------------------------------------------------------------
+            ENDMOD
+            END
